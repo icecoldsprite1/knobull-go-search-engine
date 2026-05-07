@@ -1,0 +1,21 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+knobull-engine # Or whatever you compile your binary to
+
+# OS specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# Environment variables (CRITICAL)
+.env
+.env.local
+
+# Go workspace file
+go.work
