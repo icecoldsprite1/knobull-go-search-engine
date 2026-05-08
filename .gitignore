@@ -19,3 +19,9 @@ knobull-engine # Or whatever you compile your binary to
 
 # Go workspace file
 go.work
+
+.venv/
+venv/
+__pycache__/
+*.pyc
+.vscode
