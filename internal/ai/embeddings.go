@@ -11,16 +11,15 @@ import (
 	"github.com/pgvector/pgvector-go"
 )
 
+var APIURL = "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction"
+
 // GenerateEmbedding calls the Hugging Face API to turn text into an embedding vector.
 func GenerateEmbedding(text string) (pgvector.Vector, error) {
 	hfToken := os.Getenv("HUGGINGFACE_TOKEN")
 
-	// The exact 2026 Router URL you found in the docs, but pointing to your specific model
-	url := "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction"
-
 	reqBody, _ := json.Marshal(map[string]string{"inputs": text})
 
-	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(reqBody))
+	req, _ := http.NewRequest("POST", APIURL, bytes.NewBuffer(reqBody))
 	req.Header.Set("Authorization", "Bearer "+hfToken)
 	req.Header.Set("Content-Type", "application/json")
 

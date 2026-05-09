@@ -6,6 +6,9 @@ type Resource struct {
 	Description string   `json:"description"`
 	Category    string   `json:"category"`
 	Keywords    []string `json:"keywords"`
+	Type        string   `json:"type"`    // e.g., "external_course", "internal_article"
+	Link        string   `json:"link"`    // URL for external resources
+	Content     string   `json:"content"` // Full text for internal reading
 }
 
 type SearchRequest struct {

@@ -31,7 +31,14 @@ func (s *StubStore) SearchResources(goal string) []models.Resource {
 func TestEngineServer(t *testing.T) {
 	// Setup our fake environment
 	wantedResources := []models.Resource{
-		{ID: "99", Title: "Test Course", Keywords: []string{"Test"}},
+		{
+			ID: "99", 
+			Title: "Test Course", 
+			Keywords: []string{"Test"},
+			Type: "internal_article",
+			Link: "https://example.com",
+			Content: "This is a test article",
+		},
 	}
 	store := &StubStore{resources: wantedResources}
 	server := NewEngineServer(store)

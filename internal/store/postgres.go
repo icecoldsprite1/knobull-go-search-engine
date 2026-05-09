@@ -54,14 +54,37 @@ func (p *PostgresStore) SearchResources(goal string) []models.Resource {
 		return matches
 	}
 
-	// 2. Compare the user's math to the math you seeded in the database
+	// 2. Run Hybrid Search (Vector + Full-Text)
 	rows, err := p.pool.Query(context.Background(), `
-		SELECT id, title, description, category 
-		FROM resources 
-		WHERE embedding <=> $1 < 0.65  -- The Threshold!
-		ORDER BY embedding <=> $1 
-		LIMIT 2
-	`, userVector)
+		WITH vector_search AS (
+			SELECT id, 
+				   1 - (embedding <=> $1) AS vector_score
+			FROM resources
+			ORDER BY embedding <=> $1
+			LIMIT 10
+		),
+		keyword_search AS (
+			SELECT id, 
+				   ts_rank(to_tsvector('english', title || ' ' || description || ' ' || category), plainto_tsquery('english', $2)) AS keyword_score
+			FROM resources
+			WHERE to_tsvector('english', title || ' ' || description || ' ' || category) @@ plainto_tsquery('english', $2)
+			LIMIT 10
+		)
+		SELECT 
+			r.id, 
+			r.title, 
+			r.description, 
+			r.category,
+			r.type,
+			r.link,
+			r.content
+		FROM resources r
+		LEFT JOIN vector_search v ON r.id = v.id
+		LEFT JOIN keyword_search k ON r.id = k.id
+		WHERE v.id IS NOT NULL OR k.id IS NOT NULL
+		ORDER BY (COALESCE(v.vector_score, 0.0) * 0.7) + (COALESCE(k.keyword_score, 0.0) * 0.3) DESC
+		LIMIT 5
+	`, userVector, goal)
 
 	if err != nil {
 		log.Println("Database search error:", err)
@@ -71,7 +94,7 @@ func (p *PostgresStore) SearchResources(goal string) []models.Resource {
 
 	for rows.Next() {
 		var r models.Resource
-		if err := rows.Scan(&r.ID, &r.Title, &r.Description, &r.Category); err != nil {
+		if err := rows.Scan(&r.ID, &r.Title, &r.Description, &r.Category, &r.Type, &r.Link, &r.Content); err != nil {
 			log.Println("Row scan error:", err)
 			continue
 		}

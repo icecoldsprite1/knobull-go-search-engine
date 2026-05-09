@@ -15,8 +15,8 @@ type InMemoryStore struct {
 func NewInMemoryStore() *InMemoryStore {
 	return &InMemoryStore{
 		resources: []models.Resource{
-			{ID: "1", Title: "Distributed Systems in Go", Description: "Scalable backends", Category: "CS", Keywords: []string{"Go", "Backend", "Systems"}},
-			{ID: "2", Title: "Sustainable Energy", Description: "Renewable tech", Category: "EnvSci", Keywords: []string{"Energy", "Green", "Environment"}},
+			{ID: "1", Title: "Distributed Systems in Go", Description: "Scalable backends", Category: "CS", Type: "external_course", Link: "https://example.com/go", Content: ""},
+			{ID: "2", Title: "Sustainable Energy", Description: "Renewable tech", Category: "EnvSci", Type: "internal_article", Link: "", Content: "This is a full article about renewable tech."},
 		},
 	}
 }
@@ -30,11 +30,8 @@ func (i *InMemoryStore) SearchResources(goal string) []models.Resource {
 	userGoal := strings.ToLower(goal)
 
 	for _, resource := range i.resources {
-		for _, keyword := range resource.Keywords {
-			if strings.Contains(userGoal, strings.ToLower(keyword)) {
-				matches = append(matches, resource)
-				break
-			}
+		if strings.Contains(strings.ToLower(resource.Title), userGoal) || strings.Contains(strings.ToLower(resource.Description), userGoal) {
+			matches = append(matches, resource)
 		}
 	}
 	return matches
