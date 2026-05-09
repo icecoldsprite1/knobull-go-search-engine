@@ -1,18 +1,15 @@
-package main
+package store
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"io"
 	"log"
-	"net/http"
-	"os"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/pgvector/pgvector-go"
 	pgxvec "github.com/pgvector/pgvector-go/pgx"
+
+	"github.com/icecoldsprite1/knobull-go-search-engine/internal/ai"
+	"github.com/icecoldsprite1/knobull-go-search-engine/internal/models"
 )
 
 type PostgresStore struct {
@@ -43,46 +40,15 @@ func NewPostgresStore(connectionString string) (*PostgresStore, error) {
 	return &PostgresStore{pool: pool}, nil
 }
 
-func (p *PostgresStore) GetResources() []Resource {
-	return []Resource{} // We will implement this later if needed for a frontend dashboard
+func (p *PostgresStore) GetResources() []models.Resource {
+	return []models.Resource{} // We will implement this later if needed for a frontend dashboard
 }
 
-// 🧠 THE REAL AI BRAIN (For Live User Searches)
-func generateEmbedding(text string) (pgvector.Vector, error) {
-	hfToken := os.Getenv("HUGGINGFACE_TOKEN")
-
-	// The exact 2026 Router URL you found in the docs, but pointing to your specific model
-	url := "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction"
-
-	reqBody, _ := json.Marshal(map[string]string{"inputs": text})
-
-	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(reqBody))
-	req.Header.Set("Authorization", "Bearer "+hfToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return pgvector.Vector{}, err
-	}
-	defer resp.Body.Close()
-
-	bodyBytes, _ := io.ReadAll(resp.Body)
-
-	var embedding []float32
-	if err := json.Unmarshal(bodyBytes, &embedding); err != nil {
-		log.Println("Failed to parse AI response. Body:", string(bodyBytes))
-		return pgvector.Vector{}, err
-	}
-
-	return pgvector.NewVector(embedding), nil
-}
-
-func (p *PostgresStore) SearchResources(goal string) []Resource {
-	var matches []Resource
+func (p *PostgresStore) SearchResources(goal string) []models.Resource {
+	var matches []models.Resource
 
 	// 1. Call the Hugging Face API to turn the user's career goal into math
-	userVector, err := generateEmbedding(goal)
+	userVector, err := ai.GenerateEmbedding(goal)
 	if err != nil {
 		log.Println("AI API Error:", err)
 		return matches
@@ -104,7 +70,7 @@ func (p *PostgresStore) SearchResources(goal string) []Resource {
 	defer rows.Close()
 
 	for rows.Next() {
-		var r Resource
+		var r models.Resource
 		if err := rows.Scan(&r.ID, &r.Title, &r.Description, &r.Category); err != nil {
 			log.Println("Row scan error:", err)
 			continue

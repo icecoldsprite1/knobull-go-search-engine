@@ -1,4 +1,4 @@
-package main
+package api
 
 import (
 	"encoding/json"
@@ -7,18 +7,20 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/icecoldsprite1/knobull-go-search-engine/internal/models"
 )
 
 // StubStore is our fake database just for testing
 type StubStore struct {
-	resources []Resource
+	resources []models.Resource
 }
 
-func (s *StubStore) GetResources() []Resource {
+func (s *StubStore) GetResources() []models.Resource {
 	return s.resources
 }
 
-func (s *StubStore) SearchResources(goal string) []Resource {
+func (s *StubStore) SearchResources(goal string) []models.Resource {
 	// If the test asks for "go", return our fake resource. Otherwise, return nothing.
 	if goal == "go" {
 		return s.resources
@@ -28,11 +30,11 @@ func (s *StubStore) SearchResources(goal string) []Resource {
 
 func TestEngineServer(t *testing.T) {
 	// Setup our fake environment
-	wantedResources := []Resource{
+	wantedResources := []models.Resource{
 		{ID: "99", Title: "Test Course", Keywords: []string{"Test"}},
 	}
 	store := &StubStore{resources: wantedResources}
-	server := &EngineServer{store: store}
+	server := NewEngineServer(store)
 
 	t.Run("returns all resources as JSON", func(t *testing.T) {
 		req, _ := http.NewRequest(http.MethodGet, "/api/resources", nil)
@@ -47,7 +49,7 @@ func TestEngineServer(t *testing.T) {
 		}
 
 		// Decode the response
-		var got []Resource
+		var got []models.Resource
 		err := json.NewDecoder(res.Body).Decode(&got)
 		if err != nil {
 			t.Fatalf("Unable to parse response: %v", err)
@@ -70,7 +72,7 @@ func TestEngineServer(t *testing.T) {
 		server.HandleRecommend(res, req)
 
 		// 4. Decode what the server sent back
-		var got []Resource
+		var got []models.Resource
 		err := json.NewDecoder(res.Body).Decode(&got)
 		if err != nil {
 			t.Fatalf("Unable to parse response: %v", err)

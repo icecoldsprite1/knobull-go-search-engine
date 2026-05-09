@@ -1,4 +1,4 @@
-package main
+package models
 
 type Resource struct {
 	ID          string   `json:"id"`

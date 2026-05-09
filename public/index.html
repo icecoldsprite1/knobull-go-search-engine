@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Knobull Academic Search</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>Knobull Academic Search</h1>
+        <p>Find resources for your career goals.</p>
+    </header>
+    
+    <div class="search-box">
+        <input type="text" id="goalInput" placeholder="e.g. I want to learn Go..." autocomplete="off">
+        <button id="searchBtn">Search</button>
+    </div>
+
+    <div id="loadingIndicator">
+        Loading recommendations...
+    </div>
+
+    <div class="results" id="resultsContainer">
+        <!-- Cards will be injected here -->
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html>

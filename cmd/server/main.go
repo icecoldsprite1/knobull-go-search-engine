@@ -6,6 +6,9 @@ import (
 	"os"
 
 	"github.com/joho/godotenv"
+
+	"github.com/icecoldsprite1/knobull-go-search-engine/internal/api"
+	"github.com/icecoldsprite1/knobull-go-search-engine/internal/store"
 )
 
 func main() {
@@ -21,18 +24,20 @@ func main() {
 	}
 
 	// 3. Initialize the Postgres database
-	store, err := NewPostgresStore(connStr)
+	postgresStore, err := store.NewPostgresStore(connStr)
 	if err != nil {
 		log.Fatal("Could not connect to database: ", err)
 	}
 
 	// 4. Inject the database into our server
-	server := &EngineServer{store: store}
+	server := api.NewEngineServer(postgresStore)
 
 	// 5. Setup the router
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/resources", server.HandleGetResources)
 	mux.HandleFunc("POST /api/recommend", server.HandleRecommend)
+	// Serve static files from the "public" directory
+	mux.Handle("/", http.FileServer(http.Dir("public")))
 
 	log.Println("Knobull Engine started on :8080")
 	if err := http.ListenAndServe(":8080", mux); err != nil {
