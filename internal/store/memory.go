@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"strings"
 
 	"github.com/icecoldsprite1/knobull-go-search-engine/internal/models"
@@ -25,14 +26,28 @@ func (i *InMemoryStore) GetResources() []models.Resource {
 	return i.resources
 }
 
-func (i *InMemoryStore) SearchResources(goal string) []models.Resource {
+func (i *InMemoryStore) SearchResources(ctx context.Context, req models.SearchRequest) []models.Resource {
 	var matches []models.Resource
-	userGoal := strings.ToLower(goal)
+	userGoal := strings.ToLower(req.Goal)
 
 	for _, resource := range i.resources {
+		// Category Filter
+		if req.Category != "" && resource.Category != req.Category {
+			continue
+		}
+		// Type Filter
+		if req.Type != "" && resource.Type != req.Type {
+			continue
+		}
+
 		if strings.Contains(strings.ToLower(resource.Title), userGoal) || strings.Contains(strings.ToLower(resource.Description), userGoal) {
 			matches = append(matches, resource)
 		}
 	}
 	return matches
+}
+
+func (i *InMemoryStore) LogSearch(ctx context.Context, req models.SearchRequest, resultsCount int) error {
+	// Do nothing for in-memory store
+	return nil
 }

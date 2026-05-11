@@ -2,6 +2,7 @@ package ai
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"log"
@@ -14,12 +15,12 @@ import (
 var APIURL = "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction"
 
 // GenerateEmbedding calls the Hugging Face API to turn text into an embedding vector.
-func GenerateEmbedding(text string) (pgvector.Vector, error) {
+func GenerateEmbedding(ctx context.Context, text string) (pgvector.Vector, error) {
 	hfToken := os.Getenv("HUGGINGFACE_TOKEN")
 
 	reqBody, _ := json.Marshal(map[string]string{"inputs": text})
 
-	req, _ := http.NewRequest("POST", APIURL, bytes.NewBuffer(reqBody))
+	req, _ := http.NewRequestWithContext(ctx, "POST", APIURL, bytes.NewBuffer(reqBody))
 	req.Header.Set("Authorization", "Bearer "+hfToken)
 	req.Header.Set("Content-Type", "application/json")
 

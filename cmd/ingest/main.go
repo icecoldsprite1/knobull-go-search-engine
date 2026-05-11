@@ -69,6 +69,14 @@ func main() {
             content TEXT,
             embedding vector(384)
         );
+        CREATE TABLE IF NOT EXISTS search_logs (
+            id SERIAL PRIMARY KEY,
+            goal TEXT,
+            category_filter TEXT,
+            type_filter TEXT,
+            results_count INT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
     `)
 	if err != nil {
 		log.Fatal("Failed to drop/create table: ", err)
@@ -146,7 +154,7 @@ func worker(id int, jobs <-chan Job, pool *pgxpool.Pool, wg *sync.WaitGroup) {
 		textToEmbed := fmt.Sprintf("%s. %s %s", j.Title, j.Description, j.Content)
 
 		// [cite: 56, 74] Call Hugging Face API to get the vector
-		embedding, err := ai.GenerateEmbedding(textToEmbed)
+		embedding, err := ai.GenerateEmbedding(context.Background(), textToEmbed)
 		if err != nil {
 			log.Printf("Worker %d failed to generate embedding for ID %s: %v\n", id, j.ID, err)
 			continue // Move to the next job if embedding fails

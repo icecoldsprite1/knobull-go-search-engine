@@ -1,14 +1,17 @@
 package store
 
 import (
+	"context"
 	"testing"
+
+	"github.com/icecoldsprite1/knobull-go-search-engine/internal/models"
 )
 
 func TestInMemoryStore_SearchResources(t *testing.T) {
 	store := NewInMemoryStore()
 
 	// Test a match on Title
-	results := store.SearchResources("distributed")
+	results := store.SearchResources(context.Background(), models.SearchRequest{Goal: "distributed"})
 	if len(results) != 1 {
 		t.Errorf("Expected 1 result for 'distributed', got %d", len(results))
 	} else if results[0].ID != "1" {
@@ -16,7 +19,7 @@ func TestInMemoryStore_SearchResources(t *testing.T) {
 	}
 
 	// Test a match on Description
-	results = store.SearchResources("renewable")
+	results = store.SearchResources(context.Background(), models.SearchRequest{Goal: "renewable"})
 	if len(results) != 1 {
 		t.Errorf("Expected 1 result for 'renewable', got %d", len(results))
 	} else if results[0].ID != "2" {
@@ -24,7 +27,7 @@ func TestInMemoryStore_SearchResources(t *testing.T) {
 	}
 
 	// Test no matches
-	results = store.SearchResources("nonexistent")
+	results = store.SearchResources(context.Background(), models.SearchRequest{Goal: "nonexistent"})
 	if len(results) != 0 {
 		t.Errorf("Expected 0 results for 'nonexistent', got %d", len(results))
 	}

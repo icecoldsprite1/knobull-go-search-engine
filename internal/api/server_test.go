@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -20,11 +21,15 @@ func (s *StubStore) GetResources() []models.Resource {
 	return s.resources
 }
 
-func (s *StubStore) SearchResources(goal string) []models.Resource {
+func (s *StubStore) SearchResources(ctx context.Context, req models.SearchRequest) []models.Resource {
 	// If the test asks for "go", return our fake resource. Otherwise, return nothing.
-	if goal == "go" {
+	if req.Goal == "go" {
 		return s.resources
 	}
+	return nil
+}
+
+func (s *StubStore) LogSearch(ctx context.Context, req models.SearchRequest, resultsCount int) error {
 	return nil
 }
 

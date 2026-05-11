@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -37,7 +38,7 @@ func TestGenerateEmbedding(t *testing.T) {
 	defer func() { APIURL = originalURL }()
 
 	// 3. Call the function
-	vector, err := GenerateEmbedding("hello world")
+	vector, err := GenerateEmbedding(context.Background(), "hello world")
 
 	// 4. Assert results
 	if err != nil {

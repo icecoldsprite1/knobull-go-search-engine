@@ -1,5 +1,7 @@
 package models
 
+import "context"
+
 type Resource struct {
 	ID          string   `json:"id"`
 	Title       string   `json:"title"`
@@ -12,11 +14,14 @@ type Resource struct {
 }
 
 type SearchRequest struct {
-	Goal string `json:"goal"`
+	Goal     string `json:"goal"`
+	Category string `json:"category"`
+	Type     string `json:"type"`
 }
 
 // ResourceStore defines how our server interacts with ANY database
 type ResourceStore interface {
 	GetResources() []Resource
-	SearchResources(goal string) []Resource
+	SearchResources(ctx context.Context, req SearchRequest) []Resource
+	LogSearch(ctx context.Context, req SearchRequest, resultsCount int) error
 }

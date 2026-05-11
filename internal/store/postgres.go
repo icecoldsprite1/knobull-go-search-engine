@@ -44,22 +44,23 @@ func (p *PostgresStore) GetResources() []models.Resource {
 	return []models.Resource{} // We will implement this later if needed for a frontend dashboard
 }
 
-func (p *PostgresStore) SearchResources(goal string) []models.Resource {
+func (p *PostgresStore) SearchResources(ctx context.Context, req models.SearchRequest) []models.Resource {
 	var matches []models.Resource
 
 	// 1. Call the Hugging Face API to turn the user's career goal into math
-	userVector, err := ai.GenerateEmbedding(goal)
+	userVector, err := ai.GenerateEmbedding(ctx, req.Goal)
 	if err != nil {
 		log.Println("AI API Error:", err)
 		return matches
 	}
 
-	// 2. Run Hybrid Search (Vector + Full-Text)
-	rows, err := p.pool.Query(context.Background(), `
+	// 2. Run Hybrid Search (Vector + Full-Text) with Dynamic Filtering
+	rows, err := p.pool.Query(ctx, `
 		WITH vector_search AS (
 			SELECT id, 
 				   1 - (embedding <=> $1) AS vector_score
 			FROM resources
+			WHERE ($3 = '' OR category = $3) AND ($4 = '' OR type = $4)
 			ORDER BY embedding <=> $1
 			LIMIT 10
 		),
@@ -68,6 +69,7 @@ func (p *PostgresStore) SearchResources(goal string) []models.Resource {
 				   ts_rank(to_tsvector('english', title || ' ' || description || ' ' || category), plainto_tsquery('english', $2)) AS keyword_score
 			FROM resources
 			WHERE to_tsvector('english', title || ' ' || description || ' ' || category) @@ plainto_tsquery('english', $2)
+			  AND ($3 = '' OR category = $3) AND ($4 = '' OR type = $4)
 			LIMIT 10
 		)
 		SELECT 
@@ -84,7 +86,7 @@ func (p *PostgresStore) SearchResources(goal string) []models.Resource {
 		WHERE v.id IS NOT NULL OR k.id IS NOT NULL
 		ORDER BY (COALESCE(v.vector_score, 0.0) * 0.7) + (COALESCE(k.keyword_score, 0.0) * 0.3) DESC
 		LIMIT 5
-	`, userVector, goal)
+	`, userVector, req.Goal, req.Category, req.Type)
 
 	if err != nil {
 		log.Println("Database search error:", err)
@@ -102,4 +104,12 @@ func (p *PostgresStore) SearchResources(goal string) []models.Resource {
 	}
 
 	return matches
+}
+
+func (p *PostgresStore) LogSearch(ctx context.Context, req models.SearchRequest, resultsCount int) error {
+	_, err := p.pool.Exec(ctx, `
+		INSERT INTO search_logs (goal, category_filter, type_filter, results_count)
+		VALUES ($1, $2, $3, $4)
+	`, req.Goal, req.Category, req.Type, resultsCount)
+	return err
 }

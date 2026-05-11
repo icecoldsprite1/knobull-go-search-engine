@@ -1,6 +1,8 @@
 document.addEventListener('DOMContentLoaded', () => {
     const searchBtn = document.getElementById('searchBtn');
     const goalInput = document.getElementById('goalInput');
+    const categoryFilter = document.getElementById('categoryFilter');
+    const typeFilter = document.getElementById('typeFilter');
     const resultsContainer = document.getElementById('resultsContainer');
     const loadingIndicator = document.getElementById('loadingIndicator');
 
@@ -11,6 +13,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function performSearch() {
         const goal = goalInput.value.trim();
+        const category = categoryFilter.value;
+        const type = typeFilter.value;
         if (!goal) return;
 
         resultsContainer.replaceChildren(); // Safer alternative to innerHTML = ''
@@ -21,7 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch('/api/recommend', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ goal })
+                body: JSON.stringify({ goal, category, type })
             });
 
             if (!response.ok) throw new Error('Failed to fetch recommendations');
