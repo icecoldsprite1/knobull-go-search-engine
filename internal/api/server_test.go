@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -12,21 +13,28 @@ import (
 	"github.com/icecoldsprite1/knobull-go-search-engine/internal/models"
 )
 
-// StubStore is our fake database just for testing
+// StubStore is our fake database just for testing.
+// It satisfies the models.ResourceStore interface without needing a real database.
 type StubStore struct {
 	resources []models.Resource
+	// searchErr lets individual tests inject a fake error to test the error path.
+	searchErr error
 }
 
 func (s *StubStore) GetResources() []models.Resource {
 	return s.resources
 }
 
-func (s *StubStore) SearchResources(ctx context.Context, req models.SearchRequest) []models.Resource {
-	// If the test asks for "go", return our fake resource. Otherwise, return nothing.
-	if req.Goal == "go" {
-		return s.resources
+// SearchResources now returns ([]models.Resource, error) to match the updated interface.
+// If searchErr is set, we return that error to simulate an AI or DB failure.
+func (s *StubStore) SearchResources(ctx context.Context, req models.SearchRequest) ([]models.Resource, error) {
+	if s.searchErr != nil {
+		return nil, s.searchErr
 	}
-	return nil
+	if req.Goal == "go" {
+		return s.resources, nil
+	}
+	return nil, nil
 }
 
 func (s *StubStore) LogSearch(ctx context.Context, req models.SearchRequest, resultsCount int) error {
@@ -34,70 +42,86 @@ func (s *StubStore) LogSearch(ctx context.Context, req models.SearchRequest, res
 }
 
 func TestEngineServer(t *testing.T) {
-	// Setup our fake environment
 	wantedResources := []models.Resource{
 		{
-			ID: "99", 
-			Title: "Test Course", 
+			ID:      "99",
+			Title:   "Test Course",
 			Keywords: []string{"Test"},
-			Type: "internal_article",
-			Link: "https://example.com",
+			Type:    "internal_article",
+			Link:    "https://example.com",
 			Content: "This is a test article",
 		},
 	}
 	store := &StubStore{resources: wantedResources}
 	server := NewEngineServer(store)
 
+	// Use t.Cleanup to ensure the server's background workers are cleanly
+	// shut down after the test suite finishes, preventing goroutine leaks.
+	t.Cleanup(server.Shutdown)
+
 	t.Run("returns all resources as JSON", func(t *testing.T) {
 		req, _ := http.NewRequest(http.MethodGet, "/api/resources", nil)
 		res := httptest.NewRecorder()
 
-		// Call the handler
 		server.HandleGetResources(res, req)
 
-		// Assert Status Code
 		if res.Code != http.StatusOK {
 			t.Errorf("got status %d want %d", res.Code, http.StatusOK)
 		}
 
-		// Decode the response
 		var got []models.Resource
-		err := json.NewDecoder(res.Body).Decode(&got)
-		if err != nil {
+		if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
 			t.Fatalf("Unable to parse response: %v", err)
 		}
 
-		// Assert Data matches
 		if !reflect.DeepEqual(got, wantedResources) {
 			t.Errorf("got %v want %v", got, wantedResources)
 		}
 	})
-	t.Run("returns matched resources for a specific goal", func(t *testing.T) {
-		// 1. Create a fake JSON payload {"goal": "go"}
-		requestBody := strings.NewReader(`{"goal": "go"}`)
 
-		// 2. Create the POST request
+	t.Run("returns matched resources for a specific goal", func(t *testing.T) {
+		requestBody := strings.NewReader(`{"goal": "go"}`)
 		req, _ := http.NewRequest(http.MethodPost, "/api/recommend", requestBody)
 		res := httptest.NewRecorder()
 
-		// 3. Fire it at the server
 		server.HandleRecommend(res, req)
 
-		// 4. Decode what the server sent back
+		if res.Code != http.StatusOK {
+			t.Errorf("got status %d want %d", res.Code, http.StatusOK)
+		}
+
 		var got []models.Resource
-		err := json.NewDecoder(res.Body).Decode(&got)
-		if err != nil {
+		if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
 			t.Fatalf("Unable to parse response: %v", err)
 		}
 
-		// 5. Assert that we got exactly 1 result back
 		if len(got) != 1 {
 			t.Errorf("Expected 1 match, got %d", len(got))
 		}
 
-		// 6. Assert that it is the exact resource we expected
 		if !reflect.DeepEqual(got, wantedResources) {
 			t.Errorf("got %v want %v", got, wantedResources)
 		}
 	})
+
+	// Verify that operational errors from the data store properly propagate
+	// up to the handler and result in a 500 Internal Server Error.
+	t.Run("returns 500 when the store returns an error", func(t *testing.T) {
+		// Inject a fake error into our stub store
+		faultyStore := &StubStore{searchErr: errors.New("AI service unavailable")}
+		faultyServer := NewEngineServer(faultyStore)
+		t.Cleanup(faultyServer.Shutdown)
+
+		requestBody := strings.NewReader(`{"goal": "go"}`)
+		req, _ := http.NewRequest(http.MethodPost, "/api/recommend", requestBody)
+		res := httptest.NewRecorder()
+
+		faultyServer.HandleRecommend(res, req)
+
+		// The key assertion: a server-side failure MUST return 500, not 200.
+		if res.Code != http.StatusInternalServerError {
+			t.Errorf("expected status 500 on store error, got %d", res.Code)
+		}
+	})
 }
+

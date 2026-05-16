@@ -26,7 +26,7 @@ func (i *InMemoryStore) GetResources() []models.Resource {
 	return i.resources
 }
 
-func (i *InMemoryStore) SearchResources(ctx context.Context, req models.SearchRequest) []models.Resource {
+func (i *InMemoryStore) SearchResources(ctx context.Context, req models.SearchRequest) ([]models.Resource, error) {
 	var matches []models.Resource
 	userGoal := strings.ToLower(req.Goal)
 
@@ -44,7 +44,9 @@ func (i *InMemoryStore) SearchResources(ctx context.Context, req models.SearchRe
 			matches = append(matches, resource)
 		}
 	}
-	return matches
+	// InMemoryStore never fails — it has no external dependencies.
+	// We return nil for the error to satisfy the ResourceStore interface.
+	return matches, nil
 }
 
 func (i *InMemoryStore) LogSearch(ctx context.Context, req models.SearchRequest, resultsCount int) error {

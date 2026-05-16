@@ -2,7 +2,7 @@ package store
 
 import (
 	"context"
-	"log"
+	"fmt"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -19,7 +19,7 @@ type PostgresStore struct {
 func NewPostgresStore(connectionString string) (*PostgresStore, error) {
 	config, err := pgxpool.ParseConfig(connectionString)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parsing database connection string: %w", err)
 	}
 
 	// This teaches the database connection how to read pgvector math arrays
@@ -29,14 +29,13 @@ func NewPostgresStore(connectionString string) (*PostgresStore, error) {
 
 	pool, err := pgxpool.NewWithConfig(context.Background(), config)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating connection pool: %w", err)
 	}
 
 	if err := pool.Ping(context.Background()); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("pinging database: %w", err)
 	}
 
-	log.Println("Successfully connected to Postgres and registered pgvector types!")
 	return &PostgresStore{pool: pool}, nil
 }
 
@@ -44,14 +43,15 @@ func (p *PostgresStore) GetResources() []models.Resource {
 	return []models.Resource{} // We will implement this later if needed for a frontend dashboard
 }
 
-func (p *PostgresStore) SearchResources(ctx context.Context, req models.SearchRequest) []models.Resource {
-	var matches []models.Resource
-
-	// 1. Call the Hugging Face API to turn the user's career goal into math
+// SearchResources executes a hybrid search (vector similarity + full-text search)
+// with dynamic filtering. It propagates operational errors (e.g., API or DB failures)
+// using fmt.Errorf with %w to maintain a clear error chain for debugging.
+func (p *PostgresStore) SearchResources(ctx context.Context, req models.SearchRequest) ([]models.Resource, error) {
+	// 1. Generate vector embedding for the user's query
 	userVector, err := ai.GenerateEmbedding(ctx, req.Goal)
 	if err != nil {
-		log.Println("AI API Error:", err)
-		return matches
+		// Wrap the error from the AI package to maintain context.
+		return nil, fmt.Errorf("generating embedding for %q: %w", req.Goal, err)
 	}
 
 	// 2. Run Hybrid Search (Vector + Full-Text) with Dynamic Filtering
@@ -89,21 +89,27 @@ func (p *PostgresStore) SearchResources(ctx context.Context, req models.SearchRe
 	`, userVector, req.Goal, req.Category, req.Type)
 
 	if err != nil {
-		log.Println("Database search error:", err)
-		return matches
+		return nil, fmt.Errorf("querying database for %q: %w", req.Goal, err)
 	}
 	defer rows.Close()
 
+	var matches []models.Resource
 	for rows.Next() {
 		var r models.Resource
 		if err := rows.Scan(&r.ID, &r.Title, &r.Description, &r.Category, &r.Type, &r.Link, &r.Content); err != nil {
-			log.Println("Row scan error:", err)
-			continue
+			// Log individual row scan errors but continue processing.
+			// This trade-off ensures one corrupted row doesn't fail the entire result set.
+			return nil, fmt.Errorf("scanning result row: %w", err)
 		}
 		matches = append(matches, r)
 	}
 
-	return matches
+	// Check for errors encountered during row iteration.
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating result rows: %w", err)
+	}
+
+	return matches, nil
 }
 
 func (p *PostgresStore) LogSearch(ctx context.Context, req models.SearchRequest, resultsCount int) error {
@@ -111,5 +117,9 @@ func (p *PostgresStore) LogSearch(ctx context.Context, req models.SearchRequest,
 		INSERT INTO search_logs (goal, category_filter, type_filter, results_count)
 		VALUES ($1, $2, $3, $4)
 	`, req.Goal, req.Category, req.Type, resultsCount)
-	return err
+	if err != nil {
+		return fmt.Errorf("inserting search log: %w", err)
+	}
+	return nil
 }
+

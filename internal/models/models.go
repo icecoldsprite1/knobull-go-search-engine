@@ -19,9 +19,12 @@ type SearchRequest struct {
 	Type     string `json:"type"`
 }
 
-// ResourceStore defines how our server interacts with ANY database
+// ResourceStore defines how our server interacts with the underlying data store.
+// By returning an error from SearchResources, we enforce that callers explicitly
+// handle operational failures (e.g., database connection issues, external API outages)
+// separately from empty search results.
 type ResourceStore interface {
 	GetResources() []Resource
-	SearchResources(ctx context.Context, req SearchRequest) []Resource
+	SearchResources(ctx context.Context, req SearchRequest) ([]Resource, error)
 	LogSearch(ctx context.Context, req SearchRequest, resultsCount int) error
 }
