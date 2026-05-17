@@ -11,7 +11,7 @@ func TestInMemoryStore_SearchResources(t *testing.T) {
 	store := NewInMemoryStore()
 
 	// Test a match on Title
-	results, err := store.SearchResources(context.Background(), models.SearchRequest{Goal: "distributed"})
+	results, err := store.SearchResources(context.Background(), models.SearchRequest{Goal: "distributed"}, true, 5)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -22,7 +22,7 @@ func TestInMemoryStore_SearchResources(t *testing.T) {
 	}
 
 	// Test a match on Description
-	results, err = store.SearchResources(context.Background(), models.SearchRequest{Goal: "renewable"})
+	results, err = store.SearchResources(context.Background(), models.SearchRequest{Goal: "renewable"}, true, 5)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -33,7 +33,7 @@ func TestInMemoryStore_SearchResources(t *testing.T) {
 	}
 
 	// Test no matches
-	results, err = store.SearchResources(context.Background(), models.SearchRequest{Goal: "nonexistent"})
+	results, err = store.SearchResources(context.Background(), models.SearchRequest{Goal: "nonexistent"}, true, 5)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

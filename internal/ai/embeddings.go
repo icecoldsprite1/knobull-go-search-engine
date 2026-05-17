@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -15,10 +16,35 @@ import (
 
 var APIURL = "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction"
 
-// GenerateEmbedding calls the Hugging Face API to turn text into a vector.
-// It uses error wrapping (fmt.Errorf with %w) to preserve error context for callers,
-// and enforces a strict timeout to prevent hung goroutines during API degradation.
+// embeddingCache stores recently computed vectors to avoid redundant API calls.
+// Entries expire after 1 hour to prevent stale data if the model updates.
+var embeddingCache = NewEmbeddingCache(1 * time.Hour)
+
+// GenerateEmbedding returns a vector representation of the given text.
+// It checks the in-memory cache first (microsecond RLock read) and only
+// calls the HuggingFace API on a cache miss (~300ms network call).
 func GenerateEmbedding(ctx context.Context, text string) (pgvector.Vector, error) {
+	// 1. Check cache (fast path — RLock, concurrent readers allowed)
+	if vec, ok := embeddingCache.Get(text); ok {
+		slog.Info("embedding cache hit", "text", text)
+		return vec, nil
+	}
+
+	// 2. Cache miss — call HuggingFace (slow path)
+	vec, err := callHuggingFace(ctx, text)
+	if err != nil {
+		return pgvector.Vector{}, err
+	}
+
+	// 3. Store in cache for next time (Lock, exclusive write)
+	embeddingCache.Set(text, vec)
+	slog.Info("embedding cached", "text", text)
+	return vec, nil
+}
+
+// callHuggingFace performs the actual HTTP call to the HuggingFace API.
+// Separated from GenerateEmbedding so the caching logic stays clean.
+func callHuggingFace(ctx context.Context, text string) (pgvector.Vector, error) {
 	hfToken := os.Getenv("HUGGINGFACE_TOKEN")
 
 	reqBody, err := json.Marshal(map[string]string{"inputs": text})

@@ -25,6 +25,6 @@ type SearchRequest struct {
 // separately from empty search results.
 type ResourceStore interface {
 	GetResources() []Resource
-	SearchResources(ctx context.Context, req SearchRequest) ([]Resource, error)
+	SearchResources(ctx context.Context, req SearchRequest, hybridEnabled bool, limit int) ([]Resource, error)
 	LogSearch(ctx context.Context, req SearchRequest, resultsCount int) error
 }

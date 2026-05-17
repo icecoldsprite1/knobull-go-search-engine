@@ -3,9 +3,10 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 
+	"github.com/icecoldsprite1/knobull-go-search-engine/internal/flags"
 	"github.com/icecoldsprite1/knobull-go-search-engine/internal/models"
 )
 
@@ -21,16 +22,18 @@ type logEvent struct {
 // providing backpressure and load shedding if the database becomes slow.
 type EngineServer struct {
 	store    models.ResourceStore
+	flags    flags.Provider
 	logQueue chan logEvent
 }
 
 // NewEngineServer initializes the API server and starts the background worker pool.
-func NewEngineServer(store models.ResourceStore) *EngineServer {
+func NewEngineServer(store models.ResourceStore, fp flags.Provider) *EngineServer {
 	const numWorkers = 5
 	const queueSize = 100
 
 	s := &EngineServer{
 		store:    store,
+		flags:    fp,
 		logQueue: make(chan logEvent, queueSize), // buffered channel = our work queue
 	}
 
@@ -40,29 +43,29 @@ func NewEngineServer(store models.ResourceStore) *EngineServer {
 		go s.logWorker(i + 1)
 	}
 
-	log.Printf("Started %d background log workers with queue size %d", numWorkers, queueSize)
+	slog.Info("started background log workers", "count", numWorkers, "queue_size", queueSize)
 	return s
 }
 
 // logWorker processes events from the logQueue until the channel is closed.
 func (e *EngineServer) logWorker(id int) {
-	log.Printf("Log worker %d started", id)
+	slog.Info("log worker started", "worker_id", id)
 
 	for event := range e.logQueue {
 		// Use context.Background() since this background task outlives the original HTTP request.
 		if err := e.store.LogSearch(context.Background(), event.req, event.resultsCount); err != nil {
-			log.Printf("Worker %d: failed to log search: %v", id, err)
+			slog.Error("log worker: failed to persist search", "worker_id", id, "error", err)
 		}
 	}
 
 	// Reached when the channel is closed and drained during shutdown.
-	log.Printf("Log worker %d shut down cleanly", id)
+	slog.Info("log worker shut down", "worker_id", id)
 }
 
 // Shutdown safely drains the log queue. It closes the log channel,
 // ensuring all buffered events are processed before the workers exit.
 func (e *EngineServer) Shutdown() {
-	log.Println("Closing log queue — workers will drain remaining events...")
+	slog.Info("closing log queue — workers will drain remaining events")
 	close(e.logQueue)
 }
 
@@ -85,12 +88,22 @@ func (e *EngineServer) HandleRecommend(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
+	// Evaluate feature flags for this request.
+	// We don't need a deploy to change these values; we change them in the LD dashboard.
+	hybridEnabled := e.flags.BoolVariation("hybrid-search-enabled", true)
+	limit := e.flags.IntVariation("search-results-limit", 5)
+	// Guard against a misconfigured flag returning 0 or a negative number.
+	if limit <= 0 {
+		limit = 5
+	}
+
 	// Perform the search and handle operational errors (e.g., API/DB failures)
 	// separately from valid empty results.
-	matches, err := e.store.SearchResources(r.Context(), req)
+	matches, err := e.store.SearchResources(r.Context(), req, hybridEnabled, limit)
 	if err != nil {
-		// Log the underlying error chain for debugging, but return a generic 500
-		// to avoid leaking internal system details to the client.
+		// Log the full error chain for debugging — the wrapped errors tell us
+		// exactly which layer failed (embedding, DB query, row scan, etc.)
+		slog.Error("search failed", "goal", req.Goal, "error", err)
 		http.Error(w, "Search temporarily unavailable. Please try again.", http.StatusInternalServerError)
 		return
 	}
@@ -101,10 +114,15 @@ func (e *EngineServer) HandleRecommend(w http.ResponseWriter, r *http.Request) {
 	case e.logQueue <- logEvent{req: req, resultsCount: len(matches)}:
 		// Event enqueued successfully.
 	default:
-		log.Println("Warning: log queue full, dropping search log event")
+		slog.Warn("log queue full, dropping search log event")
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	// Ensure an empty result set encodes as [] not null.
+	// In Go, a nil slice encodes as JSON null, which breaks most frontend clients.
+	if matches == nil {
+		matches = []models.Resource{}
+	}
 	json.NewEncoder(w).Encode(matches)
 }
 

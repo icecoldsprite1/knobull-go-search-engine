@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/icecoldsprite1/knobull-go-search-engine/internal/flags"
 	"github.com/icecoldsprite1/knobull-go-search-engine/internal/models"
 )
 
@@ -27,7 +28,7 @@ func (s *StubStore) GetResources() []models.Resource {
 
 // SearchResources now returns ([]models.Resource, error) to match the updated interface.
 // If searchErr is set, we return that error to simulate an AI or DB failure.
-func (s *StubStore) SearchResources(ctx context.Context, req models.SearchRequest) ([]models.Resource, error) {
+func (s *StubStore) SearchResources(ctx context.Context, req models.SearchRequest, hybridEnabled bool, limit int) ([]models.Resource, error) {
 	if s.searchErr != nil {
 		return nil, s.searchErr
 	}
@@ -53,7 +54,11 @@ func TestEngineServer(t *testing.T) {
 		},
 	}
 	store := &StubStore{resources: wantedResources}
-	server := NewEngineServer(store)
+	stubFlags := &flags.StubProvider{
+		Bools: map[string]bool{"hybrid-search-enabled": true},
+		Ints:  map[string]int{"search-results-limit": 5},
+	}
+	server := NewEngineServer(store, stubFlags)
 
 	// Use t.Cleanup to ensure the server's background workers are cleanly
 	// shut down after the test suite finishes, preventing goroutine leaks.
@@ -109,7 +114,8 @@ func TestEngineServer(t *testing.T) {
 	t.Run("returns 500 when the store returns an error", func(t *testing.T) {
 		// Inject a fake error into our stub store
 		faultyStore := &StubStore{searchErr: errors.New("AI service unavailable")}
-		faultyServer := NewEngineServer(faultyStore)
+		stubFlags := &flags.StubProvider{} // defaults are fine for this test
+		faultyServer := NewEngineServer(faultyStore, stubFlags)
 		t.Cleanup(faultyServer.Shutdown)
 
 		requestBody := strings.NewReader(`{"goal": "go"}`)

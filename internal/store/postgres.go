@@ -46,7 +46,7 @@ func (p *PostgresStore) GetResources() []models.Resource {
 // SearchResources executes a hybrid search (vector similarity + full-text search)
 // with dynamic filtering. It propagates operational errors (e.g., API or DB failures)
 // using fmt.Errorf with %w to maintain a clear error chain for debugging.
-func (p *PostgresStore) SearchResources(ctx context.Context, req models.SearchRequest) ([]models.Resource, error) {
+func (p *PostgresStore) SearchResources(ctx context.Context, req models.SearchRequest, hybridEnabled bool, limit int) ([]models.Resource, error) {
 	// 1. Generate vector embedding for the user's query
 	userVector, err := ai.GenerateEmbedding(ctx, req.Goal)
 	if err != nil {
@@ -54,8 +54,10 @@ func (p *PostgresStore) SearchResources(ctx context.Context, req models.SearchRe
 		return nil, fmt.Errorf("generating embedding for %q: %w", req.Goal, err)
 	}
 
-	// 2. Run Hybrid Search (Vector + Full-Text) with Dynamic Filtering
-	rows, err := p.pool.Query(ctx, `
+	// 2. Run Search based on the hybridEnabled feature flag
+	var rows pgx.Rows
+	if hybridEnabled {
+		query := `
 		WITH vector_search AS (
 			SELECT id, 
 				   1 - (embedding <=> $1) AS vector_score
@@ -85,8 +87,26 @@ func (p *PostgresStore) SearchResources(ctx context.Context, req models.SearchRe
 		LEFT JOIN keyword_search k ON r.id = k.id
 		WHERE v.id IS NOT NULL OR k.id IS NOT NULL
 		ORDER BY (COALESCE(v.vector_score, 0.0) * 0.7) + (COALESCE(k.keyword_score, 0.0) * 0.3) DESC
-		LIMIT 5
-	`, userVector, req.Goal, req.Category, req.Type)
+		LIMIT $5
+		`
+		rows, err = p.pool.Query(ctx, query, userVector, req.Goal, req.Category, req.Type, limit)
+	} else {
+		query := `
+		SELECT 
+			r.id, 
+			r.title, 
+			r.description, 
+			r.category,
+			r.type,
+			r.link,
+			r.content
+		FROM resources r
+		WHERE ($2 = '' OR r.category = $2) AND ($3 = '' OR r.type = $3)
+		ORDER BY r.embedding <=> $1
+		LIMIT $4
+		`
+		rows, err = p.pool.Query(ctx, query, userVector, req.Category, req.Type, limit)
+	}
 
 	if err != nil {
 		return nil, fmt.Errorf("querying database for %q: %w", req.Goal, err)
